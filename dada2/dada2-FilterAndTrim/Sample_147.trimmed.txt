@@ -1,0 +1,2 @@
+"","reads.in","reads.out"
+"Sample_147.noprimer.fastq.gz",40967,40862
