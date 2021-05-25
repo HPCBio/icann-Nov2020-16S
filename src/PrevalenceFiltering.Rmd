@@ -202,7 +202,7 @@ phyloseq_CLR = function(physeq){
 Load in the filtered data from part 1:
 
 ```{r AlphaDiversity-PacBio-8}
-physeq.filtered <- readRDS('./results/Overview/phyloseq.filtered.RDS')
+physeq.filtered <- readRDS('./results/phyloseq.filtered.RDS')
 physeq.filtered
 ```
 
@@ -311,7 +311,7 @@ ggplotly(p)
 You have to zoom into the right a bit:
 
 ```{r}
-p + xlim(-2, 2) + ylim(0,10)
+p + xlim(-20,-5) + ylim(0,10)
 ```
 
 Several stand out with very long tip lengths. What are they?
@@ -386,13 +386,14 @@ cp_phylo <- cophenetic.phylo(phy_tree(physeq.filtered))
 hist(cp_phylo, 
      breaks = 100, 
      main = "Pairwise distance between tips", 
-     xlab = "Distance between tips")
+     xlab = "Distance between tips",
+     xlim = c(-1, 5))
 
 cutoff <- c(seq(0.025, 0.15, 0.025), 0.2, 0.3, 0.5, 0.75, 1, 2)
 abline(v=cutoff, col = "red")
 ```
 
-The red lines are some arbitrary test cutoffs. Based on the above we could use 0.025 (right after the small peak between 0-0.02).  There is a second dip at about 0.15, and a third around 0.75.A few intermediate and higher values are also picked. The highest is 2, which is the `tip_glom` default.
+The red lines are some arbitrary test cutoffs. Based on the above we could use 0.3 (right after the small shoulder to the far left).  There is a second dip around 0.75 and another around 2, but those would remove quite a bit of taxa I suspect. 
 
 Let's replot in log scale.  
 
@@ -400,20 +401,21 @@ Let's replot in log scale.
 hist(log(cp_phylo), 
      breaks = 100, 
      main = "Pairwise distance between tips", 
-     xlab = "Distance between tips (log)")
+     xlab = "Distance between tips (log)",
+     xlim = c(-20, 5))
 
 abline(v=log(cutoff), col = "red")
 
 ```
-Not an obvious cutoff, unfortunately; there is a spot in the normal plot suggesting a possible cutoff but it's fairly high.  Let's try that as a top end, but loop through:
+Not an obvious cutoff, unfortunately. Let's try looping through the lowest cutoff to 0.3
 
 ```{r PrevalenceFiltering-17}
 # Use the cutoffs listed above
 
 # this takes some time to run :).  There is a speedyseq package with a faster tip_glom implementation, might be worth checking
-pseqs <- lapply(cutoff, function(x) {tip_glom(physeq.filtered, h = x)})
+pseqs <- lapply(cutoff[1:8], function(x) {tip_glom(physeq.filtered, h = x)})
 
-names(pseqs) <- cutoff
+names(pseqs) <- cutoff[1:8]
 ```
 
 Note there is a `phyloseq` instance with no tree now. Let's only plot the ones that have a tree. 
@@ -443,7 +445,7 @@ grid.arrange(grobs = prepend(plots, list(Original = p)),
 Quite a bit is removed even with the lowest cutoff.  How does that one look?
 
 ```{r PrevalenceFiltering-19}
-p <- plot_tree(pseqs.final[['0.05']],
+p <- plot_tree(pseqs.final[['0.025']],
           label.tips = "Genus",
           ladderize = "left",
           justify = "left",
@@ -462,9 +464,9 @@ One advantage with these methods, we lose essentially no count data from the pri
 
 ```{r PrevalenceFiltering-21}
 p <- ggplot(data = data.frame(
-    SampleLoss = sample_sums(pseqs.final[['0.05']]) / sample_sums(physeq.filtered),
-    Names = factor(sample_names(pseqs.final[['0.05']]), ordered = TRUE, levels = sample_names(pseqs.final[['0.15']])),
-    Group = factor(sample_data(pseqs.final[['0.05']])$Treatment, ordered = TRUE)
+    SampleLoss = sample_sums(pseqs.final[['0.3']]) / sample_sums(physeq.filtered),
+    Names = factor(sample_names(pseqs.final[['0.3']]), ordered = TRUE, levels = sample_names(pseqs.final[['0.15']])),
+    Group = factor(sample_data(pseqs.final[['0.3']])$Treatment, ordered = TRUE)
 ), aes(y = SampleLoss, x = Names, fill = Group))
 p <- p + geom_bar(stat = 'identity' )
 p <- p + theme(axis.text.x = element_text(angle = 90, hjust = 1))
@@ -474,7 +476,7 @@ p
 We'll pick the 0.0zd5 height cutoff sample for the next steps.
 
 ```{r PrevalenceFiltering-22}
-physeq.glom <- pseqs.final[['2']]
+physeq.glom <- pseqs.final[['0.3']]
 ```
 
 ## Tax agglomeration
