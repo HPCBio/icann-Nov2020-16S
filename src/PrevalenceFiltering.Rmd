@@ -202,7 +202,7 @@ phyloseq_CLR = function(physeq){
 Load in the filtered data from part 1:
 
 ```{r AlphaDiversity-PacBio-8}
-physeq.filtered <- readRDS('./results/phyloseq.filtered.RDS')
+physeq.filtered <- readRDS('./results/phyloseq.filtered.pt1.RDS')
 physeq.filtered
 ```
 
@@ -259,7 +259,7 @@ p <- p + geom_point(aes(color = Group))
 p
 ```
 
-Seems quite linear. Some minor divergence in the middle but not serious.
+Seems quite linear. In other words, the more reads the more features present.Some minor divergence in the beginning but not serious. 
 
 Next we filter based on the features prevalent in the samples.  We will also switch the order of the filtering and tree-based (tip) agglomeration steps due to the nature of PacBio data (noisier at the tips); this is something we're discussing within the group. It may be strain-level variation that is difficult to assign.
 
@@ -464,19 +464,19 @@ One advantage with these methods, we lose essentially no count data from the pri
 
 ```{r PrevalenceFiltering-21}
 p <- ggplot(data = data.frame(
-    SampleLoss = sample_sums(pseqs.final[['0.3']]) / sample_sums(physeq.filtered),
-    Names = factor(sample_names(pseqs.final[['0.3']]), ordered = TRUE, levels = sample_names(pseqs.final[['0.15']])),
-    Group = factor(sample_data(pseqs.final[['0.3']])$Treatment, ordered = TRUE)
+    SampleLoss = sample_sums(pseqs.final[['0.05']]) / sample_sums(physeq.filtered),
+    Names = factor(sample_names(pseqs.final[['0.05']]), ordered = TRUE, levels = sample_names(pseqs.final[['0.15']])),
+    Group = factor(sample_data(pseqs.final[['0.05']])$Treatment, ordered = TRUE)
 ), aes(y = SampleLoss, x = Names, fill = Group))
 p <- p + geom_bar(stat = 'identity' )
 p <- p + theme(axis.text.x = element_text(angle = 90, hjust = 1))
 p
 ```
 
-We'll pick the 0.0zd5 height cutoff sample for the next steps.
+We'll pick the 0.05 height cutoff sample for the next steps.
 
 ```{r PrevalenceFiltering-22}
-physeq.glom <- pseqs.final[['0.3']]
+physeq.glom <- pseqs.final[['0.05']]
 ```
 
 ## Tax agglomeration
@@ -484,9 +484,9 @@ physeq.glom <- pseqs.final[['0.3']]
 What is the effect of taxonomic agglomeration per rank? Let's do a quick run through on the samples; ranks that are not assigned are removed by default, so let's see what happens.
 
 ```{r PrevalenceFiltering-23 }
-taxglom_per_rank = function(physeq, rank = "Species") {
+taxglom_per_rank = function(physeq.glom, rank = "Species") {
   # TODO: add sanity check
-  glommedPhyseq <- tax_glom(physeq, taxrank = rank, NArm = TRUE)
+  glommedPhyseq <- tax_glom(physeq.glom, taxrank = rank, NArm = TRUE)
   p <- ggplot(data = data.frame(
       SampleLoss = sample_sums(glommedPhyseq) / sample_sums(physeq.filtered),
       Names = factor(sample_names(glommedPhyseq), 
@@ -515,8 +515,8 @@ grid.arrange(grobs = plots)
 Quite a bit lost with species!  Are there rows in there with 'NA'?
 
 ```{r PrevalenceFiltering-25 }
-# apply(tax_table(physeq.pacbio), 2, function(x) sum(x != "Unclassified"))
-apply(tax_table(physeq.filtered), 2, function(x) sum(is.na(x)))
+#apply(tax_table(physeq.glom), 2, function(x) sum(x != "Unclassified"))
+apply(tax_table(physeq.glom), 2, function(x) sum(is.na(x)))
 ```
 
 Yes, though not nearly as many as the overall # of taxa. This suggests maybe using the phylogenetic tree and `tip_glom`. We have been seeing this work with better fidelity with more recent data sets, particularly from PacBio sequences, but it does require a little checking on the phylogenetic branch lengths to determine the best cutoff.  The code below is based on work Lindsay Clark and Jenny have done in the group. 
@@ -536,16 +536,16 @@ Suggested based on the Callahan dada2 workflow (F1000Research, 2017).  This is a
 table(tax_table(physeq0)[,"Phylum"], exclude = NULL)
 ```
 
-A number with low features (1-2 OTUs).  
+A couple are 'NA', which is odd, because these were not present before glom-ing. There are number with low features (1-2 OTUs) as well. Let's remove the NA taxa...
 
 ```{r PrevalenceFiltering-28 }
 physeq0 <- subset_taxa(physeq0, !is.na(Phylum) & !Phylum %in% c("", "uncharacterized"))
 physeq0
 ```
 
-No difference really, so ignore.
+There is a small difference here. 
 
-Now, let's get an idea how many taxa in the samples have a ASV count greater than 1.  We can make this more or less strict as needed.
+Now, let's get an idea how many taxa in the samples have an ASV count greater than 1.  We can make this more or less strict as needed.
 
 ```{r PrevalenceFiltering-29 }
 # What is this doing?  It calculates a vector with the count being the # samples with a count > 0.
@@ -572,7 +572,7 @@ colnames(tmp) <- c("Phylum", "mean", "sum")
 knitr::kable(tmp)
 ```
 
-Patescibacteria seems to have only one ASV, and it is present at most in one sample.  Lots of Firmicutes and Bacteroidetes.  We can plot these out to get more resolution.  Let's graph the prevalence threshold using 0.05 (5%) as the standard.
+Deferribacterota, Euryarchaeota, Fibrobacterota, and Planctomycetota have low numbers of ASVs which are present at most in one sample.  Lots of Firmicutes and Bacteroidota.  We can plot these out to get more resolution.  Let's graph the prevalence threshold using 0.05 (5%) as the standard.
 
 ```{r PrevalenceFiltering-31}
 pthresh <- 0.05

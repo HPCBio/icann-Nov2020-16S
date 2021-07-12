@@ -71,8 +71,8 @@ library(lme4)
 library(lmerTest)
 library(nlme)
 
-# sample decontamination
-library(decontam)
+# sample decontamination - didn't use
+#library(decontam)
 
 # to get post-hoc tests for mixed-model tests 
 library(lsmeans)
@@ -92,7 +92,8 @@ library(microbiome)
 library(ranacapa)
 
 # this is to load some extension helper code, see: https://github.com/HPCBio/phyloseq-extended
-devtools::load_all('~/src/phyloseq-extended')
+library(devtools)
+devtools::load_all('src/phyloseq-extended/')
 ```
 
 ```{r, include=FALSE}
@@ -232,7 +233,7 @@ taxtab.q2 <- as.matrix(tmp[,ranks])
 rownames(taxtab.q2) <- tmp$Feature.ID # ASV IDs
 taxtab.q2 <- tax_table(taxtab.q2)
 knitr::kable(head(taxtab.q2))
-```
+              ```
 
 Better!
 
@@ -249,7 +250,7 @@ physeq.pacbio <- phyloseq(otu_table(seqtab.tmp, taxa_are_rows = F),
 physeq.pacbio
 ```
 
-The sample names appear to be formatted correctly.
+The sample names need to be cleaned up
 
 ```{r}
 head(sample_names(physeq.pacbio))
@@ -326,8 +327,8 @@ knitr::kable(head(track))
 Now combine all metadata together for analysis and add back to the class
 
 ```{r}
-#track <- track[1:40,] # Removing controls
-#colnames(track) <- c("Sample", "Sequence", "input","filtered", "denoised", "nonchim")
+track <- track[1:40,] # Removing controls
+colnames(track) <- c("Sample", "Sequence", "input","filtered", "denoised", "nonchim")
 tmp2 <- sample_data(right_join(tmp, track, by="Sample"))
 sample_names(tmp2) <- tmp2$Sample
 sample_names(tmp2)
@@ -413,7 +414,7 @@ Any hits for chloroplast?
 tmp <- summary(tax_table(physeq.pacbio)[,'Class'])['Chloroplast']
 ```
 
-Looks like there are no chloroplast sequences.  
+Looks like there are no chloroplast sequences, so no need to filter.
 
 ```{r }
 # use this to filter chloroplast sequence
@@ -444,7 +445,6 @@ Half of the samples contain at least 1 mitochondrial sequence. Let's remove thos
 
 ```{r }
 physeq.filtered <- subset_taxa(physeq.pacbio, is.na(Family) | Family != 'Mitochondria')
-# physeq.filtered <- subset_taxa(physeq.pacbio, !(Class == 'Chloroplast' | Family == 'Mitochondria'))
 physeq.filtered
 ```
 
@@ -453,16 +453,26 @@ physeq.filtered
 Do we need to filter out any taxa with 0 counts?  Let's check how many have taxonomic sums equal to 0
 
 ```{r }
-table(taxa_sums(physeq.filtered) != 0)
+table(taxa_sums(physeq.filtered) == 0)
 ```
 
-There are 320 taxa with 0 counts! This is likely due to the removal of the control samples earlier which contained very different taxa than the rest.  How about the number of samples who have 0 counts?
+There are 320 taxa with 0 counts! This is likely due to the removal of the control samples earlier which contained very different taxa than the rest.  Removing these below.
+
+
+```{r }
+physeq.filtered <- prune_taxa(taxa_sums(physeq.filtered) > 0, physeq.filtered)
+physeq.filtered
+```
+
+
+
+How about the number of samples who have 0 counts?
 
 ```{r }
 table(sample_sums(physeq.filtered) == 0)
 ```
 
-No samples with zero counts after filtering in the above steps. That's not completely unexpected with a new data set that we are analyzing as a whole.
+No samples with zero counts after filtering in the above steps. No filtering needed.
 
 ```{r }
 # sample_data(physeq)[sample_sums(physeq.filtered) == 0]
@@ -474,18 +484,11 @@ No samples with zero counts after filtering in the above steps. That's not compl
 # physeq.filtered
 ```
 
-```{r }
-table(taxa_sums(physeq.filtered) == 0)
-```
 
-```{r }
-physeq.filtered <- prune_taxa(taxa_sums(physeq.filtered) > 0, physeq.filtered)
-physeq.filtered
-```
 
 ## Other contaminants?
 
-We won't run this yet but we can remove biological contaminants here (e.g. ones picked up in water controls for example).  
+We won't run this yet but we can remove biological contaminants here. 
 
 ```{r }
 # These steps use the decontam library
@@ -541,12 +544,7 @@ We skip this in favor of precedence filtering, but will plot a histogram of samp
 hist(sample_sums(physeq.pacbio), breaks = 50)
 ```
 
-Pretty reasonable spread, a couple samples around 10k counts but most within 20-50k, and a few higher than that
-
-```{r }
-# physeq.filtered <- prune_samples(sample_sums(physeq.filtered) >= 1000, physeq.filtered)
-# physeq.filtered
-```
+Pretty reasonable spread, a couple samples around 10k counts but most within 20-50k, and a few higher than that. 
 
 ## Prune out any other samples?
 
@@ -620,9 +618,9 @@ p <- p + facet_wrap(~Treatment) + ggtitle("Alpha Rarefaction by Treatment")
 p
 ```
 
-Note S (Salmonella) is *highly* variable (more spread along species richness); C, PS, and PS_D each have an outlier sample with very high richness compared to the others.
+Note S (Salmonella) is pretty variable (more spread along species richness); C, PS, and PS_D each have an outlier sample with very high richness compared to the others.
 
-Just in case, we can plot by cage as well to see if there is any obvious Tissue effect.  
+Just in case, we can plot by Tissue as well to see if there is any obvious Tissue effect.  
 
 ```{r }
 p <- p + facet_wrap(~Tissue) + ggtitle("Alpha Rarefaction by Tissue")
@@ -661,27 +659,21 @@ p <- suppressMessages(ggrare(physeq.filtered, step = 1000,
 
 Here we will post a few plots for an overall compositional summary (stacked bar plots).  In this example here are the top 15 families by composition per sample, split by treatment.
 
+These composition plots did not work, but can come back to them if you'd like them made in R instead of QIIME2.
+
 ```{r }
-ranks <- c("Class", "Order", "Family", "Genus", "Species")
+#ranks <- c("Class", "Order", "Family", "Genus", "Species")
 
-p <- plot_composition(physeq.filtered, "Domain", "Bacteria", "Family", numberOfTaxa = 15, fill = "Family")
-p + facet_wrap(~Treatment, scales = "free_x", nrow = 1)
+#p <- plot_composition(physeq.filtered, sample.sort = "Treatment", otu.sort = "abundance", x.label = "Family", numberOfTaxa = 15, fill = "Family")
+#p + facet_wrap(~Treatment, scales = "free_x", nrow = 1)
 ```
 
-The same as above but split by Days Dosed.
+The same as above but split by Tissue.
 
 ```{r}
-p + facet_wrap(~Days.Dosed, scales = "free_x", nrow = 1)
-```
-No obvious pattern by day.  
-
-Finally, a plot split by cage.
-
-```{r}
-p + facet_wrap(~Cage, scales = "free_x", nrow = 1)
+#p + facet_wrap(~Tissue, scales = "free_x", nrow = 1)
 ```
 
-There *may* be a pattern here.  I think it's worth running beta diversity to test this more.
 
 # Alpha diversity
 
@@ -697,9 +689,7 @@ erDF <- estimate_richness(physeq.filtered)
 pd <- estimate_pd(physeq.filtered)
 
 # we don't need SR, it's the same as observed
-tmp <- left_join(rownames_to_column(erDF), rownames_to_column(pd[,1, drop=FALSE]), by = "rowname")
-erDF <- as.matrix(tmp[,-1])
-rownames(erDF) <- tmp$rowname
+erDF$PD <- pd$PD
 
 physeq = physeq.filtered
 
@@ -855,14 +845,12 @@ No significant differences between DNA_quality, so that's good news.
 
 ## Check for normal distribution 
 
-There does seem to be a trend with samples having lower overall alpha diversity metrics.  The plot object has the values included, let's have a look:
-
 ### Plot to check normality
 
-Do these look like a normal distribution?  Let's look at phthalate
+Do these look like a normal distribution?
 
 ```{r }
-# TODO: ggplot?
+library(scales)
 par(mfrow = c(2, 3))
 
 tmm <- lapply(c('Chao1', 'Shannon', 'Simpson', 'InvSimpson', 'Observed', 'PD'), 
@@ -872,340 +860,40 @@ tmm <- lapply(c('Chao1', 'Shannon', 'Simpson', 'InvSimpson', 'Observed', 'PD'),
          })
 ```
 
-All look pretty reasonable. Simpson & InvSimpson do have a little skew. See AlphaDiversity-PacBio.Rmd for more alpha diversity statistics
+All look pretty reasonable. Simpson & InvSimpson do have a little skew. 
+
+# Save point
+```{r }
+saveRDS(physeq.filtered, file = "results/phyloseq.filtered.pt1.RDS")
+```
 
 # Filtering
 
-## Explore taxon data 
+NOTE: The PrevalenceFiltering.Rmd script was run at this point.
 
-What is the range in total counts per taxon?
+## Load Prevalence filtering results.
 
-```{r }
-range(taxa_sums(physeq.filtered))
-```
-
-Some taxa with very low counts overall; depending on their prevalence this may be removed.  What does the distribution look like at the low end?
-
-```{r }
-hist(log2(taxa_sums(physeq.filtered)), 1000)
-```
-
-What about sample counts?  What is the range in total counts per sample?
-
-```{r }
-range(sample_sums(physeq.filtered))
-```
-
-Even at the low end there are a reasonable # of counts per sample; keep in mind these are assigned counts.  Let's plot these.
-
-```{r }
-p <- ggplot(data = data.frame(
-    SampleSums = sample_sums(physeq.filtered),
-    Names = factor(sample_names(physeq.filtered), ordered = TRUE,
-                   levels = sample_names(physeq.filtered)),
-    Group = factor(sample_data(physeq.filtered)$Treatment, ordered = TRUE)
-), aes(y = SampleSums, x = Names, fill = Group))
-p <- p + geom_bar(stat = 'identity' )
-p <- p + theme(axis.text.x = element_text(angle = 90, hjust = 1))
-p
-```
-
-How do the ASV counts correlate with the read counts?
-
-```{r }
-myData <- data.frame(
-  Name = sample_names(physeq.filtered),
-  OTUSums = sample_sums(physeq.filtered),
-  Reads = as.numeric(sample_data(physeq.filtered)$input),
-  Group = sample_data(physeq.filtered)$Treatment
-)
-p <- ggplot(data = myData, aes(x = Reads, y = OTUSums))
-p <- p + geom_smooth(method = "lm", color = "lightblue")
-p <- p + geom_point(aes(color = Group))
-p
-```
-
-Very linear. In other words, the more reads the more features present.
-
-Next we filter based on the features prevalent in the samples.  It's possible that we will switch the order of the filtering and tree-based agglomeration steps due to the nature of PacBio data (noisier at the tips); this is something we're discussing within the group. It may be strain-level variation that is difficult to assign.
-
-## Tip agglomeration
-
-What does the current tree look like?
-
-```{r}
-p <- plot_tree(physeq.filtered, 
-          nodelabf = nodeplotblank, 
-          color="Sample", 
-          ladderize = "left", 
-          method = "treeonly") +
-  ggtitle(paste0("Original tree: ", ntaxa(physeq.filtered), " taxa")) +
-  theme(plot.title = element_text(size = 10))
-library(plotly)
-
-ggplotly(p)
-```
-Zooming into the tips indicates there are a many sequences with very small differences.  
-
-```{r}
-hist(log(phy_tree(physeq.filtered)$edge.length), 
-     xlab = "Edge Length (log)", 
-     main = "Edge length distribution")
-```
-The agglomeration is based on the cophenetic distance, the pairwise distances between tips on the tree. These are pretty short; let's see what that distribution looks like
-
-```{r}
-cp_phylo <- cophenetic.phylo(phy_tree(physeq.filtered))
-
-hist(cp_phylo, 
-     breaks = 100, 
-     main = "Pairwise distance between tips", 
-     xlab = "Distance between tips")
-
-cutoff <- c(seq(0.025, 0.15, 0.025), 0.2, 0.3, 0.5, 0.75, 1, 2)
-abline(v=cutoff, col = "red")
-```
-
-The red lines are some arbitrary test cutoffs. Based on the above we could use 0.75 or 1 (right after the first small peak).  There is a second dip at 2, which is the `tip_glom` default.
-
-Let's replot in log scale.  
-
-```{r}
-hist(log(cp_phylo), 
-     breaks = 100, 
-     main = "Pairwise distance between tips", 
-     xlab = "Distance between tips (log)")
-
-abline(v=log(cutoff), col = "red")
-
-```
-A cutoff of 1 is right in between the first two humps. However, I could go lower to preserve more taxa since the tips don't look terribly cluttered. I'll try a few of these cutoffs.
-
-```{r}
-# Use the cutoffs listed above
-
-# this takes some time to run :).  There is a speedyseq package with a faster tip_glom implementation, might be worth checking
-pseqs <- lapply(cutoff[3:11], function(x) {tip_glom(physeq.filtered, h = x)})
-
-names(pseqs) <- cutoff[3:11]
-```
-
-Note there is a `phyloseq` instance with no tree now. Let's only plot the ones that have a tree. 
-
-```{r}
-# In order to screen for instances with a tree we need to use tryCatch as checking the tree slot with phy_tree will error if it is NULL)
-
-pseqs.final <- pseqs[sapply(pseqs, function(x) {
-  !is.null( tryCatch({phy_tree(x)}, error = function(cond) { return(NULL) }) )
-  }, simplify = TRUE)]
-
-plots <- sapply(names(pseqs.final), function(x) {
-  plot_tree(pseqs.final[[x]], 
-          nodelabf = nodeplotblank,
-          ladderize = "left", 
-          method = "treeonly") + 
-  ggtitle(paste0("Height:",x, ", ", ntaxa(pseqs.final[[x]]), " taxa")) + 
-    theme(plot.title = element_text(size = 10))
-  }, simplify = FALSE
-  )
-
-grid.arrange(grobs = prepend(plots, list(Original = p)),
-             nrow = 3)
-
-```
-Quite a bit is removed even with the lowest cutoff.  How does that one look?
-
-```{r}
-p <- plot_tree(pseqs.final[['0.15']],
-          label.tips = "Genus",
-          ladderize = "left",
-          justify = "left",
-          color = 'Treatment')
-```
-
-```{r}
-#ggplotly(p)
-ggplotly(plot_tree(pseqs.final[['0.15']],
-          # nodelabf = nodeplotblank,
-          ladderize = "left",
-          method = "treeonly"))
-```
-
-One advantage here is that we lose no data from the prior step:
-
-```{r}
-p <- ggplot(data = data.frame(
-    SampleLoss = sample_sums(pseqs.final[['0.15']]) / sample_sums(physeq.prev),
-    Names = factor(sample_names(pseqs.final[['0.15']]), ordered = TRUE, levels = sample_names(pseqs.final[['0.15']])),
-    Group = factor(sample_data(pseqs.final[['0.15']])$Treatment, ordered = TRUE)
-), aes(y = SampleLoss, x = Names, fill = Group))
-p <- p + geom_bar(stat = 'identity' )
-p <- p + theme(axis.text.x = element_text(angle = 90, hjust = 1))
-p
-```
-
-We'll pick the 0.15 height cutoff sample for the next steps.
-
-```{r}
-physeq.filtered <- pseqs.final[['0.15']]
-```
-
-## Tax agglomeration
-
-What is the effect of taxonomic agglomeration per rank? Let's do a quick run through on the samples; ranks that are not assigned are removed by default, so let's see what happens.
-
-```{r }
-taxglom_per_rank = function(physeq, rank = "Species") {
-  # TODO: add sanity check
-  glommedPhyseq <- tax_glom(physeq, taxrank = rank, NArm = TRUE)
-  p <- ggplot(data = data.frame(
-      SampleLoss = sample_sums(glommedPhyseq) / sample_sums(physeq.prev),
-      Names = factor(sample_names(glommedPhyseq), 
-                     ordered = TRUE, 
-                     levels = sample_names(glommedPhyseq)),
-      Group = factor(sample_data(glommedPhyseq)$Treatment, ordered = TRUE)
-  ), aes(y = SampleLoss, x = Names, fill = Group)) +
-    geom_bar(stat = 'identity' ) + 
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
-    ggtitle(paste0("Rank: ", rank))
-  return(p)
-}
-```
-
-```{r }
-ranks <- c("Species", "Genus", "Family", "Order")
-
-plots <- lapply(ranks, function(x) { 
-  p <- taxglom_per_rank(physeq.prev, rank = x)
-  p + theme(legend.position = "none")
-})
-
-grid.arrange(grobs = plots)
-```
-
-Quite a bit with species!  Are there rows in there with 'NA'?
-
-```{r }
-# apply(tax_table(physeq.pacbio), 2, function(x) sum(x != "Unclassified"))
-apply(tax_table(physeq.prev), 2, function(x) sum(is.na(x)))
-```
-
-Yes, though not nearly as many as the overall # of taxa. This suggests maybe using the phylogenetic tree and `tip_glom`. We have been seeing this work with better fidelity with more recent data sets, particularly from PacBio sequences, but it does require a little checking on the phylogenetic branch lengths to determine the best cutoff.  The code below is based on work Lindsay Clark and Jenny have done in the group. 
-
-## Features and Prevalence tables
-
-For the filtering, let's assign the original filtered data to a temp variable prior to prevalence filtering.
-
-```{r }
-physeq0 <- physeq.filtered
-physeq0
-```
-
-Suggested based on the Callahan dada2 workflow (F1000Research, 2017).  This is a bit of data exploration to see how many features are present per taxa.
-
-```{r }
-table(tax_table(physeq0)[,"Phylum"], exclude = NULL)
-```
-
-A number with low features (1-2 OTUs).  
-
-```{r }
-physeq0 <- subset_taxa(physeq0, !is.na(Phylum) & !Phylum %in% c("", "uncharacterized"))
-physeq0
-```
-
-No difference really, so ignore.
-
-Now, let's get an idea how many taxa in the samples have a ASV count greater than 1.  We can make this more or less strict as needed.
-
-```{r }
-# What is this doing?  It calculates a vector with the count being the # samples with a count > 0.
-
-# Note: make sure you are using *raw counts* here; if you use proportional
-# counts make sure to adjust the function appropriately
-prevdf <- apply(otu_table(physeq0),  # counts
-               # use row or column depending on the data
-               MARGIN = ifelse(taxa_are_rows(physeq0), yes = 1, no = 2), 
-               # how many times the counts in the samples are greater than 0
-               FUN = function(x){sum(x > 0)}  
-               )
-prevdf <- data.frame(Prevalence =  prevdf, # num samples counts are > 0
-                     TotalAbundance = taxa_sums(physeq0), # total abundance
-                     tax_table(physeq0)) # tax ID and ranks
-```
-
-Here is a quick summary of the prevalence results.  These are performed per ASV but summarized at the Phylum rank, with the 
-
-```{r }
-# a quick high level summary at the Phylum rank.
-tmp <- plyr::ddply(prevdf, "Phylum", function(df1) { cbind(mean(df1$Prevalence), sum(df1$Prevalence)) })
-colnames(tmp) <- c("Phylum", "mean", "sum")
-knitr::kable(tmp)
-```
-
-Patescibacteria seems to have only one ASV, and it is present at most in one sample.  Lots of Firmicutes and Bacteroidetes.  We can plot these out to get more resolution.  Let's graph the prevalence threshold using 0.05 (5%) as the standard.
-
-```{r}
-pthresh = 0.05
-```
-
-This is around `r round(pthresh * nsamples(physeq0))` samples.  We can modify this setting, but we'll leave as is for now.  We may want to modify this to not reflect the specific group but the treatments (e.g. ensure we're not losing any taxa based on the treatment condition)
-
-This plot shows the fraction of samples vs the total abundance for that, which helps give some idea on what to retain.
-
-```{r }
-ggplot(prevdf,
-       aes(TotalAbundance, Prevalence / nsamples(physeq0), color = Phylum)) +
-  geom_hline(yintercept = pthresh, alpha = 0.5, linetype = 2) +
-  geom_point(size = 2, alpha = 0.4) +
-  scale_x_log10() +
-  xlab("Total Abundance") + ylab("Prevalence [Frac. Samples]") +
-  facet_wrap(~Phylum) + theme(legend.position = "none")
-```
-
-The horizontal line indicates the cutoff in this case. Let's apply it and see what happens. 
-
-```{r }
-prevThreshold <- pthresh * nsamples(physeq.pacbio)
-
-keepTaxa <- rownames(prevdf)[(prevdf$Prevalence >= prevThreshold)]
-physeq.prev <- prune_taxa(keepTaxa, physeq.pacbio)
-physeq.prev
-```
-
-Not too unreasonable. How much do we lose when we remove these?
-
-```{r }
-p <- ggplot(data = data.frame(
-    SampleLoss = sample_sums(physeq.prev) / sample_sums(physeq.pacbio),
-    Names = factor(sample_names(physeq.prev), ordered = TRUE, levels = sample_names(physeq.prev)),
-    Group = factor(sample_data(physeq.prev)$Treatment, ordered = TRUE)
-), aes(y = SampleLoss, x = Names, fill = Group))
-p <- p + geom_bar(stat = 'identity' )
-p <- p + theme(axis.text.x = element_text(angle = 90, hjust = 1))
-p
-```
-
-This seems to retain the vast majority of data. Note that one sample (D1M25) has the most loss, this is also from the most variable treatment group.
+physeq.prev < - readRDS("./results/PrevalenceFiltering/phyloseq.prevfiltered.RDS")
 
 # Basic composition plot on agglomerated data
 
 ```{r }
-p <- plot_composition(finalPhyseq, "Domain", "Bacteria", "Genus", numberOfTaxa = 15, fill = "Family")
-p1 <- p + facet_wrap(~Treatment, scales = "free_x", nrow = 1)
-p1
+#p <- plot_composition(physeq.prev, sample.sort = "Treatment", otu.sort = "abundance", x.label = "Family", numberOfTaxa = 15, fill = "Family")
+#p1 <- p + facet_wrap(~Treatment, scales = "free_x", nrow = 1)
+#p1
 ```
+Ran into error, so skipping above code.
 
 # Beta diversity
 
 Initial beta diversity calculation on the glommed samples information
 
 ```{r }
-p <- plot_heatmap(finalPhyseq,
+p <- plot_heatmap(physeq.prev,
                   method = "PCoA",
                   distance = "bray",
                   taxa.label = "Family",
-                  sample.label = "SampleID",
+                  sample.label = "Sample",
                   trans = log_trans(2))
 p
 ```
@@ -1215,8 +903,8 @@ p
 Transform data to relative proportions (no prior added).  We may want the option to change this later.
 
 ```{r }
-physeq.prop <- transform_sample_counts(finalPhyseq, function(x) x/sum(x) )
-sample_data(physeq.prop)$SampleSums <- sample_sums(finalPhyseq)
+physeq.prop <- transform_sample_counts(physeq.prev, function(x) x/sum(x) )
+sample_data(physeq.prop)$SampleSums <- sample_sums(physeq.prev)
 ```
 
 ## CLR normalization, McMurdie
@@ -1225,7 +913,7 @@ Transform data using CLR (from McMurdie (Meth Mol Bio 2018) supplemental package
 
 ```{r }
 # copy instance and replace raw counts with CLR-normalized counts
-physeq.clr <- phyloseq_CLR(finalPhyseq)
+physeq.clr <- phyloseq_CLR(physeq.prev)
 # otu_table(physeq.clr) <- otu_table(as(x, "matrix"), taxa_are_rows = FALSE)
 physeq.clr
 ```
@@ -1236,24 +924,24 @@ CLR from `mixOmics`.
 
 ```{r }
 # get counts
-tmp <- as(otu_table(finalPhyseq),"matrix")
+tmp <- as(otu_table(physeq.prev),"matrix")
 
 tmp <- tmp
 
 # transpose if needed
-if(!taxa_are_rows(finalPhyseq)) { tmp <- t(tmp)}
+if(!taxa_are_rows(physeq.prev)) { tmp <- t(tmp)}
 
 x <- logratio.transfo(tmp, logratio = 'CLR', offset = 1)
 
 # copy instance and replace raw counts with CLR-normalized counts
-physeq.clr2 <- finalPhyseq
+physeq.clr2 <- physeq.prev
 otu_table(physeq.clr2) <- otu_table(as(x, "matrix"), taxa_are_rows = TRUE)
 physeq.clr2
 ```
 
 ## Set active instance
 
-Set the active normalization type (CLR for now)
+Set the active normalization type (Prop for now)
 
 ```{r}
 physeq.active <- physeq.prop
@@ -1271,19 +959,21 @@ p1 = plot_ordination(physeq.active,
 p1
 ```
 
-A mix on the outliers; maybe color by count?
+physeq.prop: Control separates from the other treatments pretty obviously. The other treatments are mixed and vaguely cluster together. 
+physeq.clr: Everything is on top of one another...very odd, will skip this one.
+physeq.clr2: Treatments are much more spread out, and a random mixture of samples clusters very tightly. Doesn't make a lot of sense.
 
 ```{r }
 p1 <- plot_ordination(physeq.active,
                      finalPhyseq.ord,
                      type="samples",
                      color="input",
-                     label="SampleID",
+                     label="Sample",
                      title="Samples")
 p1
 ```
 
-Let's look at Weighted UniFrac
+Nothing odd here. Let's look at Weighted UniFrac
 
 ```{r}
 finalPhyseq.ord <- ordinate(physeq.active, "NMDS", "wunifrac")
@@ -1292,7 +982,7 @@ p1 = plot_ordination(physeq.active,
                      type="samples",
                      color="Treatment",
                      axes = c(1,2),
-                     label = "SampleID",
+                     label = "Sample",
                      title="Samples") + geom_point(size=3)
 #p1 + scale_color_brewer(palette="Spectral")
 p1
@@ -1301,6 +991,9 @@ p1
 ```{r}
 p1 + facet_wrap(~Treatment)
 ```
+
+physeq.prop: Seems like C and S_D cluster mostly tightly
+physeq.clr2: PS_D clusters well, and S_D clusters fairly well.
 
 ## PERMANOVA
 
@@ -1317,14 +1010,16 @@ adonis2(finalPhyseq.prop.dist.bc ~ Treatment,
        data = finalPhyseq.meta)
 ```
 
-This indicates the treatment effect is significant (pval = 0.02)
+physeq.prop: This indicates the treatment effect is very significant (pval = <0.001)
+physeq.clr2: ""
 
 ```{r}
-adonis2(finalPhyseq.prop.dist.bc ~ Treatment + Cage,
+adonis2(finalPhyseq.prop.dist.bc ~ Treatment + Tissue,
        data = finalPhyseq.meta)
 ```
 
-Here I am including both Treatment and Cage. Notably there is a significant difference detected  with the treatment, but not with cage. This seems to be slightly more significant when accounting for Cage here.
+physeq.prop: When including DNA_quality, DNA_quality is not significant. When I include Tissue it is significant. 
+physeq.clr2: When I include Tissue, it's not significant, and Treatment's significance goes down.
 
 Next we check for significance in differences between group dispersion.
 
@@ -1333,20 +1028,24 @@ beta <- betadisper(finalPhyseq.prop.dist.bc, finalPhyseq.meta$Treatment)
 permutest(beta)
 ```
 
-Good! This suggests that any issues with heteroscedasticity aren't likely to be significant.  What does this dispersion look like?
+
+physeq.prop: Good! This suggests that any issues with heteroscedasticity aren't likely to be significant.  What does this dispersion look like?
+physeq.clr2: heteroscedasticity is significant.
+
 
 ```{r }
 plot(beta)
 ```
 
-What about cage?
+What about Tissue?
 
 ```{r}
-beta <- betadisper(finalPhyseq.prop.dist.bc, finalPhyseq.meta$Cage)
+beta <- betadisper(finalPhyseq.prop.dist.bc, finalPhyseq.meta$Tissue)
 permutest(beta)
 ```
 
-No significance.  here is the plot:
+physeq.prop: No significance.  here is the plot:
+physeq.clr2: Significant
 
 ```{r}
 plot(beta)
@@ -1367,10 +1066,10 @@ finalPhyseq.prop.ano
 plot(finalPhyseq.prop.ano, cex.axis = 0.6)
 ```
 
-How about Cage?
+How about Tissue?
 
 ```{r }
-finalPhyseq.prop.ano <- anosim(finalPhyseq.prop.dist.bc, finalPhyseq.meta$Cage)
+finalPhyseq.prop.ano <- anosim(finalPhyseq.prop.dist.bc, finalPhyseq.meta$Tissue)
 finalPhyseq.prop.ano
 ```
 
@@ -1378,118 +1077,6 @@ finalPhyseq.prop.ano
 plot(finalPhyseq.prop.ano)
 ```
 
-<!-- ## LEfSE -->
-
-<!-- We're using a conda-based installation of `LEfSE`.  `LEfSE` on Mac is a bit flaky to install, so we call using a modified LEfSE table generater and accompaying functions from some great R-based wrapper code [available on GitHub](https://github.com/ying14/yingtools2).   -->
-
-<!-- ```{r lefse1} -->
-<!-- require(yingtools2) -->
-<!-- require(data.table) -->
-<!-- prepForLefse <- function(phy, class, subclass=NA, subject=NA, -->
-<!--                   anova.alpha=0.05, wilcoxon.alpha=0.05, lda.cutoff=2.0, -->
-<!--                   wilcoxon.within.subclass=FALSE, one.against.one=FALSE, -->
-<!--                   mult.test.correction=0, -->
-<!--                   make.lefse.plots=FALSE, by_otus=FALSE, lefse.prefix='', -->
-<!--                   results.prefix='lefse', -->
-<!--                   levels=rank_names(phy)) { -->
-<!--   tmp <- phy -->
-<!--   # clean up meta data -->
-
-<!--   keepvars <- c(class,subclass,subject,"sample") -->
-<!--   keepvars <- unique(keepvars[!is.na(keepvars)]) -->
-<!--   samp <- yingtools2::get.samp(phy)[,keepvars] -->
-<!--   # note that lefse taxa names cannot have spaces, will replace ; and = with _ -->
-<!--   # gsub("[;=]","_",xx$otu) -->
-<!--   otu <- yingtools2::get.otu.melt(phy,sample_data=FALSE) -->
-<!--   if (by_otus) { #perform by otu only -->
-<!--     otu.levels <- otu %>% mutate(taxon=otu) %>% -->
-<!--       group_by(sample,taxon) %>% summarize(pctseqs=sum(pctseqs)) %>% -->
-<!--       mutate(taxon=gsub(" ","_",taxon)) -->
-<!--   } else { #divide by taxonomy -->
-<!--     otu.list <- lapply(1:length(levels),function(i) { -->
-<!--       lvls <- levels[1:i] -->
-<!--       lvl <- levels[i] -->
-<!--       otu.level <- otu -->
-<!--       otu.level$taxon <- do.call(paste,c(lapply(lvls,function(l) otu[[l]]),sep="|")) -->
-<!--       otu.level$rank <- lvl -->
-<!--       otu.level2 <- otu.level %>% group_by(sample,taxon,rank) %>% summarize(pctseqs=sum(pctseqs)) %>% ungroup() -->
-<!--       return(otu.level2) -->
-<!--     }) -->
-<!--     otu.levels <- bind_rows(otu.list) %>% -->
-<!--       mutate(taxon=gsub(" ","_",taxon)) -->
-<!--   } -->
-
-<!--   otu.tbl <- otu.levels %>% -->
-<!--     dcast(sample~taxon,value.var="pctseqs",fill=0) %>% -->
-<!--     left_join(samp,by="sample") %>% -->
-<!--     select_(.dots=c(keepvars,lazyeval::interp(~everything()))) -->
-<!--   if (is.na(subject) | subject!="sample") { -->
-<!--     otu.tbl <- otu.tbl %>% select(-sample) -->
-<!--   } -->
-<!--   tbl <- otu.tbl %>% t() -->
-<!--   out.file <- paste(results.prefix, 'txt', sep='.') -->
-<!--   write.table(tbl,out.file,quote=FALSE,sep="\t",col.names=FALSE) -->
-<!--   opt.class <- paste("-c",which(keepvars %in% class)) -->
-<!--   #opt.class <- gsub('\\s+', '.', opt.class) -->
-<!--   opt.subclass <- ifelse(is.na(subclass),"",paste("-s",which(keepvars %in% subclass))) -->
-<!--   #opt.subclass <- gsub('\\s+', '.', opt.subclass) -->
-<!--   opt.subject <-ifelse(is.na(subject),"",paste("-u",which(keepvars %in% subject))) -->
-<!--   format.command <- paste(lefse.prefix, -->
-<!--                           "format_input.py", -->
-<!--                           out.file,  -->
-<!--                           paste(results.prefix,"in", sep="."), -->
-<!--                           opt.class, opt.subclass, opt.subject, "-o 1000000") -->
-<!--   print(paste("Run this: ", format.command)) -->
-<!--   lefse.command <- paste(paste0(lefse.prefix, "run_lefse.py"), -->
-<!--                          paste(results.prefix,"in", sep='.'),  -->
-<!--                          paste(results.prefix,"res", sep='.'), -->
-<!--                          "-a",anova.alpha, -->
-<!--                          "-w",wilcoxon.alpha, -->
-<!--                          "-l",lda.cutoff, -->
-<!--                          "-e",as.numeric(wilcoxon.within.subclass), -->
-<!--                          "-y",as.numeric(one.against.one), -->
-<!--                          "-s",mult.test.correction) -->
-<!--   print(paste("Then run this: ", lefse.command)) -->
-<!-- } -->
-<!-- ``` -->
-
-<!-- ```{r lefse2} -->
-<!-- # library(reticulate) # needed for lefse -->
-<!-- # data("cid94") -->
-<!-- # use_condaenv(condaenv = "lefse", required = TRUE) -->
-<!-- tmpPhy <- finalPhyseq -->
-<!-- # let's fix one data type -->
-
-<!-- sample_data(tmpPhy)$Tissue <- gsub('\\s+', '.', sample_data(tmpPhy)$Tissue) -->
-
-<!-- prepForLefse(tmpPhy, -->
-<!--              class = "Tissue", -->
-<!--              results.prefix = 'lefse-v4-tissue') -->
-<!-- ``` -->
-
-<!-- ```{r lefse2} -->
-<!-- prepForLefse(tmpPhy, -->
-<!--              class = "Tissue2", -->
-<!--              results.prefix = 'lefse-v4-tissue2') -->
-<!-- ``` -->
-
-<!-- ```{r lefse3} -->
-<!-- prepForLefse(tmpPhy, -->
-<!--              class = "Brushing", -->
-<!--              results.prefix = 'lefse-v4-brushing') -->
-<!-- ``` -->
-
-<!-- ```{r lefse4} -->
-<!-- prepForLefse(tmpPhy, -->
-<!--              class = "Pain.Mouth", -->
-<!--              results.prefix = 'lefse-v4-mouthpain') -->
-<!-- ``` -->
-
-<!-- ```{r lefse2} -->
-<!-- prepForLefse(tmpPhy, -->
-<!--              class = "mouth.odor", -->
-<!--              results.prefix = 'lefse-v4-mouthodor') -->
-<!-- ``` -->
 
 ## Differential abundance analysis
 
@@ -1497,15 +1084,15 @@ Run DESeq2.
 
 ```{r }
 library(DESeq2)
-sample_data(finalPhyseq)$Treatment <- relevel(sample_data(finalPhyseq)$Treatment, "Vehicle")
+sample_data(physeq.prev)$Treatment <- relevel(sample_data(physeq.prev)$Treatment, "C")
 
-sample_data(finalPhyseq)$ind.n <- as.factor(sample_data(finalPhyseq)$ind.n)
+#sample_data(physeq.prev)$Tissue <- as.factor(sample_data(physeq.prev)$Tissue)
 
-targets <- sample_data(finalPhyseq)
+targets <- sample_data(physeq.prev)
 
-design <- model.matrix(~ Treatment + Treatment:ind.n, data = as(targets, "data.frame"))
+design <- model.matrix(~ Treatment, data = as(targets, "data.frame"))
 
-finalPhyseq.adds = phyloseq_to_deseq2(finalPhyseq, ~ Treatment + Treatment:ind.n)
+finalPhyseq.adds = phyloseq_to_deseq2(physeq.prev, ~ Treatment)
 
 finalPhyseq.adds = DESeq(finalPhyseq.adds, 
                          test="Wald", 
@@ -1515,20 +1102,14 @@ finalPhyseq.adds = DESeq(finalPhyseq.adds,
                          )
 ```
 
-WHat are the results names?
+What are the results names?
 
 ```{r}
 resultsNames(finalPhyseq.adds)
 ```
 
 
-```{r }
-res = results(finalPhyseq.adds, cooksCutoff = FALSE)
-res = cbind(as(res, "data.frame"), as(tax_table(finalPhyseq)[rownames(res), ], "matrix"))
-dim(res[which(res$padj <= 0.05), ])
-```
-
-4 taxa show overall significant diffences with treatment.  Let's try pulling out contrasts:
+Let's try pulling out contrasts:
 
 ```{r }
 generateContrastResults <- function(deseq, contrast, physeq, file = "results.txt") {
@@ -1563,66 +1144,177 @@ plotDESeq2Res <- function(res) {
 }
 ```
 
-```{r }
-res.20ug = generateContrastResults(deseq = finalPhyseq.adds, 
-                              contrast = c("Treatment", 
-                                           "20µg DiNP",  # num
-                                           "Vehicle"), # denom,
-                              physeq = finalPhyseq,
-                              file = "Overall-20ugVsVehicle.txt"
-
-)
-dim(res.20ug[which(res.20ug$padj <= 0.05), ])
-```
-
-```{r }
-plotDESeq2Res(res.20ug)
-```
+Pull out specific contrast. The numbers in the contrast vector below correspond to the different test results we generated. [1] "Intercept"           "Treatment_PS_vs_C"   "Treatment_PS_D_vs_C"
+                      [4] "Treatment_S_vs_C"    "Treatment_S_D_vs_C" 
 
 ```{r }
 res.test = generateContrastResults(deseq = finalPhyseq.adds, 
-                              contrast = c(0,0,0,0,0,0,0,0,1,0,0,0),
-                              physeq = finalPhyseq,
-                              file = "Overall-test.txt"
-
+                              contrast = c(0,1,0,0,0),
+                              physeq = physeq.prev,
+                              file = "Overall-SvsPS.txt"
 )
 dim(res.test[which(res.test$padj <= 0.05), ])
 ```
+The first number above corresponds to the number of significant taxa (p <= 0.05) in this test result.
 
+We can plot this w/ a DESeq function...
 ```{r }
 plotDESeq2Res(res.test)
 ```
 
+We can also plot this w/ ggplot so we can have more control over the image. These codes will have to be run for each test.
+```{r signif_Overall1}
+sigtab <- res.test[which(res.test$padj < 0.05), ]
+scale_fill_discrete <- function(palname = "Set1", ...) {
+    scale_fill_brewer(palette = palname, ...)
+}
+```
 
-<!-- ```{r signif_Overall1} -->
-<!-- write.table(res, "Overall-Treatment-full-ranks.txt", row.names = FALSE, sep = "\t") -->
-<!-- sigtab <- res[which(res$padj < 0.05), ] -->
-<!-- scale_fill_discrete <- function(palname = "Set1", ...) { -->
-<!--     scale_fill_brewer(palette = palname, ...) -->
-<!-- } -->
 
-<!-- x = tapply(sigtab$log2FoldChange, sigtab$Phylum, function(x) max(x)) -->
-<!-- x = sort(x, TRUE) -->
-<!-- sigtab$Phylum = factor(as.character(sigtab$Phylum), levels=names(x)) -->
-
-<!-- # Genus order -->
-<!-- x = tapply(sigtab$log2FoldChange, sigtab$Genus, function(x) max(x)) -->
-<!-- x = sort(x, TRUE) -->
-<!-- sigtab$Genus = factor(as.character(sigtab$Genus), levels=names(x)) -->
-<!-- ggplot(sigtab, aes(x=Genus, y=log2FoldChange, color=Phylum, size = 16)) + geom_point(size=10) + -->
-<!--   theme(axis.text.x = element_text(angle = -90, hjust = 0, vjust=0.5, size = 16)) -->
-<!-- ``` -->
-
-## Random Forest analysis
+The following may need to be run in the console so that it runs without errors. Run the first chunk first. Adjust the image size to preference, and then run the ggsave() line to save it.
+```{r Genus plot}
+# Genus order
+x = tapply(sigtab$log2FoldChange, sigtab$Genus, function(x) max(x))
+x = sort(x, TRUE)
+sigtab$Genus = factor(as.character(sigtab$Genus), levels=names(x))
+ggplot(sigtab, aes(x=Genus, y=log2FoldChange, color=Phylum, size = 9)) + geom_point(size=4) +
+  theme(axis.text.x = element_text(angle = -90, hjust = 0, vjust=0.5, size = 8))
+```
 
 ```{r}
-predictors <- otu_table(finalPhyseq)
+ggsave("S_vs_PS-Treatment-logfoldchange-Genus.png", path = "./results/")
+```
+
+
+```{r Family plot}
+# Family order
+x = tapply(sigtab$log2FoldChange, sigtab$Family, function(x) max(x))
+x = sort(x, TRUE)
+sigtab$Family = factor(as.character(sigtab$Family), levels=names(x))
+ggplot(sigtab, aes(x=Family, y=log2FoldChange, color=Phylum, size = 10)) + geom_point(size=5) +
+  theme(axis.text.x = element_text(angle = -90, hjust = 0, vjust=0.5, size = 10))
+```
+
+```{r}
+ggsave("S_vs_PS-Treatment-logfoldchange-Family.png", path = "./results/")
+```
+
+
+```{r Species plot}
+# Species order
+x = tapply(sigtab$log2FoldChange, sigtab$Species, function(x) max(x))
+x = sort(x, TRUE)
+sigtab$Species = factor(as.character(sigtab$Species), levels=names(x))
+ggplot(sigtab, aes(x=Species, y=log2FoldChange, color=Phylum, size = 10)) + geom_point(size=5) +
+  theme(axis.text.x = element_text(angle = -90, hjust = 0, vjust=0.5, size = 10))
+```
+
+```{r}
+ggsave("S_vs_PS-Treatment-logfoldchange-Species.png", path = "./results/")
+```
+
+
+Add Genus + Species column 
+```{r}
+sigtab$GeneSpecies <- paste(sigtab$Genus,sigtab$Species)
+```
+
+```{r Genus & Species plot}
+# Genus & Species order
+x = tapply(sigtab$log2FoldChange, sigtab$GeneSpecies, function(x) max(x))
+x = sort(x, TRUE)
+sigtab$Species = factor(as.character(sigtab$GeneSpecies), levels=names(x))
+ggplot(sigtab, aes(x=GeneSpecies, y=log2FoldChange, color=Phylum, size = 8)) + geom_point(size=5) +
+  theme(axis.text.x = element_text(angle = -90, hjust = 0, vjust=0.5, size = 8))
+```
+
+```{r}
+ggsave("PS_DvsC-Treatment-logfoldchange-Genus_Species.png", path = "./results/")
+```
+
+
+# Heatmap of just pathogenic and benificial taxa
+
+Investigate present pathogenic and beneficial taxa so that I can make a list of OTUs
+```{r}
+uniq.tax <- tax_table(physeq.prev)[,5:7] 
+uniq.tax[as.character(uniq.tax[,2]) == 'Treponema',]
+```
+
+Import beneficial and pathogenic OTU lists
+
+```{r}
+bene_taxa <- read.csv("src/Cann_beneficial_taxa.txt", header = TRUE, sep = "\t")
+patho_taxa <- read.csv("src/Cann_pathogenic_taxa.txt", header = TRUE, sep = "\t")
+bene_taxa %>% head()
+patho_taxa %>% head()
+
+# Combine lists
+bene_taxa$type <- "beneficial"
+patho_taxa$type <- "pathogenic"
+
+both_taxa <- rbind(bene_taxa, patho_taxa)
+```
+Prune taxa from phyloseq object & add type information
+```{r}
+physeq.heatmap <- prune_taxa(both_taxa$taxa_id, physeq.prev)
+physeq.heatmap.glom <- tax_glom(physeq.heatmap, taxrank = "Species", NArm = FALSE)
+
+tmp <- ifelse(rownames(tax_table(physeq.heatmap)) %in% patho_taxa$taxa_id, "pathogenic", "beneficial")
+# Haven't figured out how to add it yet
+uniq_family <- unique(both_taxa$family)
+uniq_family <- uniq_family[order(uniq_family)]
+
+sample_data(physeq.heatmap)
+```
+
+
+```{r}
+p <- plot_heatmap(physeq.heatmap.glom,
+                  method = "PCoA",
+                  distance = "bray",
+                  taxa.label = "Family",
+                  sample.label = "Sample",
+                  sample.order = "Treatment",
+                #  taxa.order = c("Campylobacteraceae", "Enterobacteriaceae", "Erysipelotrichaceae", "Methanobacteriaceae","Oscillospiraceae", "Pasteurellaceae", "Spirochaetaceae", "Staphylococcaceae", "Streptococcaceae", "Bacillaceae", "Bacteroidaceae", "Bifidobacteriaceae","Butyricicoccaceae", "Lachnospiraceae","Lactobacillaceae", "Ruminococcaceae", "Veillonellaceae"),
+                  taxa.order = "Family",
+                  trans = log_trans(2))
+p
+```
+
+Experiment w/ making separate tables
+```{r}
+
+physeq.heatp <- prune_taxa(patho_taxa$taxa_id, physeq.prev)
+physeq.heatb <- prune_taxa(bene_taxa$taxa_id, physeq.prev)
+
+#Agglomerate taxa and species level to remove redundancy
+physeq.heatp.glom <- tax_glom(physeq.heatp, taxrank = "Species", NArm = FALSE)
+physeq.heatb.glom <- tax_glom(physeq.heatb, taxrank = "Species", NArm = FALSE)
+```
+
+```{r}
+p <- plot_heatmap(physeq.heatb.glom,
+                  method = "PCoA",
+                  distance = "bray",
+                  taxa.label = "Family",
+                  sample.label = "Sample",
+                  sample.order = "Treatment",
+                  taxa.order = "Family",
+                  trans = log_trans(2),
+                  title = "Beneficial Organisms")
+p
+```
+
+## Random Forest analysis
+```{r}
+predictors <- otu_table(physeq.prev)
 dim(predictors)
 ```
 
 ```{r}
 # Make one column for our outcome/response variable 
-response <- as.factor(sample_data(finalPhyseq)$Treatment)
+response <- as.factor(sample_data(physeq.prev)$Treatment)
 
 # Combine them into 1 data frame
 rf.data <- data.frame(response, predictors)
@@ -1646,7 +1338,7 @@ imp <- data.frame(predictors = gsub('^X', '', rownames(imp)), imp)
 # Order the predictor levels by importance
 imp.sort <- arrange(imp, desc(MeanDecreaseGini))
 
-tx.tmp <- as.data.frame(tax_table(finalPhyseq)[imp.sort$predictors, ])
+tx.tmp <- as.data.frame(tax_table(physeq.prev)[imp.sort$predictors, ])
 imp.sort$taxonomy <- apply(
   tx.tmp,
   1,
@@ -1679,9 +1371,9 @@ p
 # What are those OTUs?
 taxanames <- imp.10$predictors
 
-r <- taxa_names(finalPhyseq) %in% taxanames
+r <- taxa_names(physeq.prev) %in% taxanames
 
-as.data.frame(tax_table(finalPhyseq)[r, ])
+as.data.frame(tax_table(physeq.prev)[r, ])
 ```
 
 # Save
