@@ -1242,69 +1242,121 @@ uniq.tax[as.character(uniq.tax[,2]) == 'Treponema',]
 ```
 
 Import beneficial and pathogenic OTU lists
-
 ```{r}
 bene_taxa <- read.csv("src/Cann_beneficial_taxa.txt", header = TRUE, sep = "\t")
 patho_taxa <- read.csv("src/Cann_pathogenic_taxa.txt", header = TRUE, sep = "\t")
-bene_taxa %>% head()
-patho_taxa %>% head()
-
-# Combine lists
-bene_taxa$type <- "beneficial"
-patho_taxa$type <- "pathogenic"
-
-both_taxa <- rbind(bene_taxa, patho_taxa)
-```
-Prune taxa from phyloseq object & add type information
-```{r}
-physeq.heatmap <- prune_taxa(both_taxa$taxa_id, physeq.prev)
-physeq.heatmap.glom <- tax_glom(physeq.heatmap, taxrank = "Species", NArm = FALSE)
-
-tmp <- ifelse(rownames(tax_table(physeq.heatmap)) %in% patho_taxa$taxa_id, "pathogenic", "beneficial")
-# Haven't figured out how to add it yet
-uniq_family <- unique(both_taxa$family)
-uniq_family <- uniq_family[order(uniq_family)]
-
-sample_data(physeq.heatmap)
-```
-
-
-```{r}
-p <- plot_heatmap(physeq.heatmap.glom,
-                  method = "PCoA",
-                  distance = "bray",
-                  taxa.label = "Family",
-                  sample.label = "Sample",
-                  sample.order = "Treatment",
-                #  taxa.order = c("Campylobacteraceae", "Enterobacteriaceae", "Erysipelotrichaceae", "Methanobacteriaceae","Oscillospiraceae", "Pasteurellaceae", "Spirochaetaceae", "Staphylococcaceae", "Streptococcaceae", "Bacillaceae", "Bacteroidaceae", "Bifidobacteriaceae","Butyricicoccaceae", "Lachnospiraceae","Lactobacillaceae", "Ruminococcaceae", "Veillonellaceae"),
-                  taxa.order = "Family",
-                  trans = log_trans(2))
-p
-```
-
-Experiment w/ making separate tables
-```{r}
-
 physeq.heatp <- prune_taxa(patho_taxa$taxa_id, physeq.prev)
 physeq.heatb <- prune_taxa(bene_taxa$taxa_id, physeq.prev)
-
-#Agglomerate taxa and species level to remove redundancy
-physeq.heatp.glom <- tax_glom(physeq.heatp, taxrank = "Species", NArm = FALSE)
-physeq.heatb.glom <- tax_glom(physeq.heatb, taxrank = "Species", NArm = FALSE)
 ```
 
+Sample order
+```{r}
+ord <- c("113",	"114",	"115",	"116",	"161",	"162",	"163",	"164",	"3",	"4",	"7",	"8",	"126",	"127",	"172",	"173",	"131",	"133",	"135",	"136",	"177",	"179",	"181",	"182",	"140",	"144",	"147",	"148",	"186",	"190",	"193",	"194",	"152",	"154",	"157",	"160",	"196",	"198",	"201",	"204")
+```
+
+# Genus-level heatmaps
+```{r}
+#Agglomerate taxa and species level to remove redundancy
+physeq.heatp.glom <- tax_glom(physeq.heatp, taxrank = "Genus", NArm = FALSE)
+physeq.heatb.glom <- tax_glom(physeq.heatb, taxrank = "Genus", NArm = FALSE)
+
+# Genus is not NA
+no.na.p <- !is.na(tax_table(physeq.heatp.glom)[,"Genus"])
+no.na.b <- !is.na(tax_table(physeq.heatb.glom)[,"Genus"])
+
+#Genus level in beneficial has a couple NAs that need to be renamed to Family
+tax_table(physeq.heatb.glom)[!no.na.b][,"Genus"] = paste("[Family]", tax_table(physeq.heatb.glom)[!no.na.b][,"Family"])
+```
+
+Pathogenic heatmap
+```{r}
+p <- plot_heatmap(physeq.heatp.glom,
+                  method = "PCoA",
+                  distance = "bray",
+                  taxa.label = "Genus",
+                  sample.label = "Sample",
+                  sample.order = ord,
+                  taxa.order = "Genus",
+                  trans = log_trans(2),
+                  title = "Pathogenic Organisms")
+p
+
+#ggsave("pathogenic-genus-level-heatmap.pdf", path = "./results/", device = pdf, width = 8.5, height = 3.5, units = "in")
+```
+
+Beneficial heatmap
 ```{r}
 p <- plot_heatmap(physeq.heatb.glom,
                   method = "PCoA",
                   distance = "bray",
-                  taxa.label = "Family",
+                  taxa.label = "Genus",
                   sample.label = "Sample",
-                  sample.order = "Treatment",
-                  taxa.order = "Family",
+                  sample.order = ord,
+                  taxa.order = "Genus",
                   trans = log_trans(2),
                   title = "Beneficial Organisms")
 p
+
+#ggsave("beneficial-genus-level-heatmap.pdf", path = "./results/", device = pdf, width = 8.5, height = 8.5, units = "in")
 ```
+
+
+
+# Species-level heatmaps
+```{r}
+#Agglomerate taxa and species level to remove redundancy
+physeq.heatp.glom <- tax_glom(physeq.heatp, taxrank = "Species", NArm = FALSE)
+physeq.heatb.glom <- tax_glom(physeq.heatb, taxrank = "Species", NArm = FALSE)
+
+#Replace "Unclassified" and NA species w/ "sp."
+tax_table(physeq.heatp.glom)[,"Species"][tax_table(physeq.heatp.glom)[,"Species"] == "Unclassified"] <- "sp."
+tax_table(physeq.heatp.glom)[,"Species"][is.na(tax_table(physeq.heatp.glom)[,"Species"])] <- "sp."
+tax_table(physeq.heatb.glom)[,"Species"][tax_table(physeq.heatb.glom)[,"Species"] == "Unclassified"] <- "sp."
+tax_table(physeq.heatb.glom)[,"Species"][is.na(tax_table(physeq.heatb.glom)[,"Species"])] <- "sp."
+
+# Replace Species with full name
+tax_table(physeq.heatp.glom)[no.na.p][,"Species"] = paste(tax_table(physeq.heatp.glom)[no.na.p][,"Genus"], tax_table(physeq.heatp.glom)[no.na.p][,"Species"])
+tax_table(physeq.heatb.glom)[no.na.b][,"Species"] = paste(tax_table(physeq.heatb.glom)[no.na.b][,"Genus"], tax_table(physeq.heatb.glom)[no.na.b][,"Species"])
+
+#Genus level has a couple NAs that need to be renamed
+tax_table(physeq.heatb.glom)[!no.na.b][,"Genus"] = paste("[Family]", tax_table(physeq.heatb.glom)[!no.na.b][,"Family"])
+tax_table(physeq.heatb.glom)[!no.na.b][,"Species"] = paste("[Family]", tax_table(physeq.heatb.glom)[!no.na.b][,"Family"])
+```
+
+Pathogenic heatmap
+```{r}
+p <- plot_heatmap(physeq.heatp.glom,
+                  method = "PCoA",
+                  distance = "bray",
+                  taxa.label = "Species",
+                  sample.label = "Sample",
+                  sample.order = ord,
+                  taxa.order = "Genus",
+                  trans = log_trans(2),
+                  title = "Pathogenic Organisms")
+p
+
+#ggsave("pathogenic-species-level-heatmap.pdf", path = "./results/", device = pdf, width = 8.5, height = 5, units = "in")
+```
+
+Beneficial heatmap
+```{r}
+p <- plot_heatmap(physeq.heatb.glom,
+                  method = "PCoA",
+                  distance = "bray",
+                  taxa.label = "Species",
+                  sample.label = "Sample",
+                  sample.order = ord,
+                  taxa.order = "Genus",
+                  trans = log_trans(2),
+                  title = "Beneficial Organisms")
+p
+
+#ggsave("beneficial-species-level-heatmap.pdf", path = "./results/", device = pdf, width = 8.5, height = 8.5, units = "in")
+```
+
+
+
 
 ## Random Forest analysis
 ```{r}
