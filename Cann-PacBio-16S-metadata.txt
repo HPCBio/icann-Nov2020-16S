@@ -1,8 +1,8 @@
 Sample	Group	Treatment	Tissue	Pig_id	Salmonella	PRRSV	DFM	DNA_conc_ng-ul	DNA_quality
-161	1	C	Digesta	30	Absent	Absent	Absent	171	High
-162	1	C	Digesta	8	Absent	Absent	Absent	108	High
-163	1	C	Digesta	10	Absent	Absent	Absent	140	High
-164	1	C	Digesta	49	Absent	Absent	Absent	212	High
+161	1	C	Digesta	30	Control	Control	Control	171	High
+162	1	C	Digesta	8	Control	Control	Control	108	High
+163	1	C	Digesta	10	Control	Control	Control	140	High
+164	1	C	Digesta	49	Control	Control	Control	212	High
 186	4	PS	Digesta	47	Present	Present	Absent	63	Medium
 190	4	PS	Digesta	35	Present	Present	Absent	24	Medium
 193	4	PS	Digesta	15	Present	Present	Absent	174	Medium
@@ -19,10 +19,10 @@ Sample	Group	Treatment	Tissue	Pig_id	Salmonella	PRRSV	DFM	DNA_conc_ng-ul	DNA_qua
 179	3	S_D	Digesta	18	Present	Absent	Present	235	High
 181	3	S_D	Digesta	31	Present	Absent	Present	188	Medium
 182	3	S_D	Digesta	29	Present	Absent	Present	25	High
-113	1	C	Mucosa	30	Absent	Absent	Absent	139	Medium
-114	1	C	Mucosa	8	Absent	Absent	Absent	16	Medium
-115	1	C	Mucosa	10	Absent	Absent	Absent	146	Medium
-116	1	C	Mucosa	49	Absent	Absent	Absent	266	High
+113	1	C	Mucosa	30	Control	Control	Control	139	Medium
+114	1	C	Mucosa	8	Control	Control	Control	16	Medium
+115	1	C	Mucosa	10	Control	Control	Control	146	Medium
+116	1	C	Mucosa	49	Control	Control	Control	266	High
 140	4	PS	Mucosa	47	Present	Present	Absent	246	Medium
 144	4	PS	Mucosa	35	Present	Present	Absent	263	High
 147	4	PS	Mucosa	15	Present	Present	Absent	290	High

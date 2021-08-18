@@ -31,6 +31,8 @@ Code (not shown in the report) is initialized and loaded here.  We don't include
 ```{r, echo=TRUE, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE)
 knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+setwd("/Users/krkptrc2/Desktop/hpcbio-git/icann-Nov2020-16S")
 ```
 
 ```{r, include=FALSE}
@@ -233,11 +235,11 @@ taxtab.q2 <- as.matrix(tmp[,ranks])
 rownames(taxtab.q2) <- tmp$Feature.ID # ASV IDs
 taxtab.q2 <- tax_table(taxtab.q2)
 knitr::kable(head(taxtab.q2))
-              ```
+```
 
-Better!
+Better!   z
 
-```{r }
+```{r}
 seqtab.tmp <- readRDS('./dada2/dada2-Tables/seqtab_final.simple.RDS')
 #taxtab.tmp <- readRDS('./dada2/dada2-Tables/tax_final.simple.RDS')
 tree.tmp <- read_tree('./dada2/dada2-RootedTree/rooted.newick')
@@ -276,7 +278,7 @@ Load in experimental data on samples (metadata).  Here are the first few rows:
 
 ```{r}
 library(readxl)
-tmp <- read_tsv('./Cann-PacBio-16S-metadata.txt')
+tmp <- read_tsv('Cann-PacBio-16S-metadata.txt')
 tmp$Treatment <- factor(tmp$Treatment)
 tmp$Sample <- factor(tmp$Sample)
 tmp$Tissue <- factor(tmp$Tissue)
@@ -296,7 +298,7 @@ We also read in read QC so we can layer in whether read abundance plays a role. 
 library(dada2)
 getN <- function(x) sum(getUniques(x))
 
-# the gsub here might be a bit brittle...
+# the gs"ub here might be a bit brittle...
 dadas <- as.data.frame(
     sapply(readRDS("./dada2/dada2-Derep-Pooled/all.dds.RDS"), getN)
     )
@@ -324,7 +326,7 @@ write.table(track, "all.readtracking.txt", sep = "\t", row.names = FALSE)
 knitr::kable(head(track))
 ```
 
-Now combine all metadata together for analysis and add back to the class
+Now combine all metadata together for analysis and add back to the class. Remove kit and water control.
 
 ```{r}
 track <- track[1:40,] # Removing controls
@@ -411,7 +413,8 @@ Next we check for organelle 16S.  These could arise in chloroplast or mitochondr
 Any hits for chloroplast?
 
 ```{r }
-tmp <- summary(tax_table(physeq.pacbio)[,'Class'])['Chloroplast']
+table(tax_table(physeq.pacbio)[,'Class'])['Chloroplast']
+
 ```
 
 Looks like there are no chloroplast sequences, so no need to filter.
@@ -557,7 +560,14 @@ None yet, but this is where we may want to prune out other problematic samples i
 
 # Basic overview
 
-Okay, now let's look at the data.  We have `r ntaxa(physeq.pacbio)` taxa and `r nsamples(physeq.pacbio) samples.
+Okay, now let's look at the data.  We have `r ntaxa(physeq.pacbio)` taxa and `r nsamples(physeq.pacbio)` samples.
+
+Before plotting, let's change the order of metadata.
+```{r}
+#Rearrange treatment order
+sample_data(physeq.filtered)$Treatment <- factor(sample_data(physeq.filtered)$Treatment,levels = c("C","S","S_D","PS","PS_D"))
+sample_data(physeq.filtered)$DFM <- factor(sample_data(physeq.filtered)$DFM,levels = c("Control","Absent","Present"))
+```
 
 Here are the sample variables for analysis:
 
@@ -600,13 +610,14 @@ p <- suppressMessages(ggrare(physeq.filtered, step = 1000,
             color = "Treatment",
             label = "Sample",
             se = FALSE,
-            plot = FALSE
+            plot = FALSE,
             ))
 ```
 
 ```{r, include=FALSE}
 p + ggtitle("Alpha Rarefaction")
 p
+#ggsave("alpha-rarefaction-byTreatment.pdf", path = "./results/final-plots", device = pdf, width = 7.5, height = 5.5, units = "in")
 ```
 
 There are some interesting patterns here. For example the DFM treatment seems to decrease alpha diversity in the PS (PRRSV + Salmonella) group, but increases it in the S (Salmonella group)
@@ -614,8 +625,9 @@ There are some interesting patterns here. For example the DFM treatment seems to
 <!-- Split by tissue (location-specific) -->
 
 ```{r}
-p <- p + facet_wrap(~Treatment) + ggtitle("Alpha Rarefaction by Treatment")
+p <- p + facet_wrap(~Treatment) + ggtitle("Alpha Rarefaction by Treatment") + theme(legend.position = c(0.8, 0.2))
 p
+#ggsave("alpha-rarefaction-byTreatment-separatedbyTreatment.pdf", path = "./results/final-plots", device = pdf, width = 7.5, height = 5, units = "in")
 ```
 
 Note S (Salmonella) is pretty variable (more spread along species richness); C, PS, and PS_D each have an outlier sample with very high richness compared to the others.
@@ -623,8 +635,9 @@ Note S (Salmonella) is pretty variable (more spread along species richness); C, 
 Just in case, we can plot by Tissue as well to see if there is any obvious Tissue effect.  
 
 ```{r }
-p <- p + facet_wrap(~Tissue) + ggtitle("Alpha Rarefaction by Tissue")
+p <- p + facet_wrap(~Tissue) + ggtitle("Alpha Rarefaction by Tissue") + theme(legend.position = "right")
 p
+#ggsave("alpha-rarefaction-byTreatment-separatedbyTissue.pdf", path = "./results/final-plots", device = pdf, width = 6, height = 4, units = "in")
 ```
 
 They actually look pretty similar, with the exception of those 2 samples with very high richness that skew Mucosa towards looking more diverse overall. We can also look at Pig_id to see if a couple pigs just happen to have higher diversity in both tissue types.
@@ -639,7 +652,7 @@ p <- suppressMessages(ggrare(physeq.filtered, step = 1000,
 ```
 
 ```{r }
-p <- p + facet_wrap(~Pig_id) + ggtitle("Alpha Rarefaction by Pig_id")
+p <- p + facet_wrap(~DFM) + ggtitle("Alpha Rarefaction by DFM")
 p
 ```
 
@@ -681,17 +694,25 @@ Check alpha diversity stats.  Note we haven't performed any additional filtering
 
 > You must use untrimmed, non-normalized count data for meaningful results, as many of these estimates are highly dependent on the number of singletons. You can always trim the data later on if needed, just not before using this function.
 
+Split phyloseq object into two: Mucosa and Digesta
+```{r}
+mucosa <- subset_samples(physeq.filtered, Tissue=="Mucosa")
+digesta <- subset_samples(physeq.filtered, Tissue=="Digesta")
+long.labels <- c("Control","Salmonella","Salmonella + DFM","PRSV/Salmonella","PRSV/Salmonella + DFM")
+```
+
+## Mucosa
 ```{r}
 # all six measures: Observed, Chao1, ACE, Shannon, Simpson, Inv. Simpson, Fisher
-erDF <- estimate_richness(physeq.filtered)
+erDF <- estimate_richness(mucosa)
 
 # add Faith's PD, this is a simple wrapper to format everything correctly
-pd <- estimate_pd(physeq.filtered)
+pd <- estimate_pd(mucosa)
 
 # we don't need SR, it's the same as observed
 erDF$PD <- pd$PD
 
-physeq = physeq.filtered
+physeq = mucosa
 
 measures = colnames(erDF)
 ```
@@ -814,33 +835,122 @@ plot_richness_estimates = function(physeq, erDF, x="samples", color=NULL, shape=
 	return(p)
 }
 
-p <- plot_richness_estimates(physeq = physeq.filtered, erDF = erDF, "Treatment", color = "Treatment")
-
-p + geom_boxplot(aes(x=Treatment, y=value, color=NULL), alpha=0.1) +
-  stat_compare_means(label = "p.signif", ref.group = "C",  hide.ns = FALSE)
 ```
 
-The patterns look very similar to what the rarefaction plots illustrated, with the exception of the Simpson metrics. PS_D does seem to be significantly different than the control. PS_D seems to be significant compared to PS, but its hard to say.
+Pull out just Faith PD for Treatment
+```{r}
+p <- plot_richness_estimates(physeq = physeq.filtered, erDF = erDF[10], "Treatment", color = "Treatment", title="Alpha diversity in different treatment groups (Mucosa)")
+
+p + geom_boxplot(aes(x=Treatment, y=value, color=NULL), alpha=0.1) +
+  stat_compare_means(label = "p.signif", ref.group = "C",  hide.ns = TRUE) +
+  ylab("Faith PD") + scale_x_discrete(labels=long.labels) + theme(legend.position = "none")
+
+#ggsave("alpha-faithpd-mucosa-byTreatment.pdf", path = "./results/final-plots", device = pdf, width = 6, height = 5.5, units = "in")
+```
 
 Here is a look at DFM presence:
 
 ```{r}
-p <- plot_richness_estimates(physeq = physeq.filtered, erDF = erDF, "DFM", color = "DFM")
+# Remove controls
+no.control <- subset_samples(physeq, DFM!="Control")
+nc.erDF <- estimate_richness(no.control)
+
+# add Faith's PD, this is a simple wrapper to format everything correctly
+nc.pd <- estimate_pd(no.control)
+
+# we don't need SR, it's the same as observed
+nc.erDF$PD <- nc.pd$PD
+nc.measures = colnames(nc.erDF)
+```
+```{r}
+p <- plot_richness_estimates(physeq = no.control, erDF = nc.erDF[10], "DFM", color = "DFM", title="Alpha diversity in the presence and absence of DFM (Mucosa)")
 
 p + geom_boxplot(aes(y=value, color=NULL), alpha=0.1) +
-  stat_compare_means(label = "p.signif", ref.group = "Absent",  hide.ns = FALSE)
+  stat_compare_means(label = "p.signif", ref.group = "Absent",  hide.ns = TRUE) +
+  ylab("Faith PD") + theme(legend.position = "none")
+
+#ggsave("alpha-faithpd-mucosa-byDFM.pdf", path = "./results/final-plots", device = pdf, width = 5.5, height = 4.5, units = "in")
 ```
 
 Presence of DFM is not significant.
 
+## Digesta ##
 ```{r}
-p <- plot_richness_estimates(physeq.filtered, erDF, "DNA_quality", color = "DNA_quality")
+# all six measures: Observed, Chao1, ACE, Shannon, Simpson, Inv. Simpson, Fisher
+erDF <- estimate_richness(digesta)
 
-p + geom_boxplot(aes(x=DNA_quality, y=value, color=NULL), alpha=0.1) +
-  stat_compare_means(label = "p.signif", ref.group = "Low",  hide.ns = FALSE)
+# add Faith's PD, this is a simple wrapper to format everything correctly
+pd <- estimate_pd(digesta)
+
+# we don't need SR, it's the same as observed
+erDF$PD <- pd$PD
+
+physeq = digesta
+
+measures = colnames(erDF)
 ```
 
-No significant differences between DNA_quality, so that's good news.
+Pull out just Faith PD for Treatment
+```{r}
+p <- plot_richness_estimates(physeq = physeq, erDF = erDF[10], "Treatment", color = "Treatment", title="Alpha diversity in different treatment groups (Digesta)")
+
+p + geom_boxplot(aes(x=Treatment, y=value, color=NULL), alpha=0.1) +
+  stat_compare_means(label = "p.signif", ref.group = "C",  hide.ns = TRUE) +
+  ylab("Faith PD") + scale_x_discrete(labels=long.labels) + theme(legend.position = "none")
+
+#ggsave("alpha-faithpd-digesta-byTreatment.pdf", path = "./results/final-plots", device = pdf, width = 6, height = 5.5, units = "in")
+```
+
+Here is a look at DFM presence:
+
+```{r}
+# Remove controls
+no.control <- subset_samples(physeq, DFM!="Control")
+nc.erDF <- estimate_richness(no.control)
+
+# add Faith's PD, this is a simple wrapper to format everything correctly
+nc.pd <- estimate_pd(no.control)
+
+# we don't need SR, it's the same as observed
+nc.erDF$PD <- nc.pd$PD
+nc.measures = colnames(nc.erDF)
+```
+
+```{r}
+p <- plot_richness_estimates(physeq = no.control, erDF = nc.erDF[10], "DFM", color = "DFM", title="Alpha diversity in the presence and absence of DFM (Digesta)")
+
+p + geom_boxplot(aes(y=value, color=NULL), alpha=0.1) +
+  stat_compare_means(label = "p.signif", ref.group = "Absent",  hide.ns = TRUE) +
+  ylab("Faith PD") + theme(legend.position = "none")
+
+#ggsave("alpha-faithpd-digesta-byDFM.pdf", path = "./results/final-plots", device = pdf, width = 5.5, height = 4.5, units = "in")
+```
+
+## All samples ##
+```{r}
+# all six measures: Observed, Chao1, ACE, Shannon, Simpson, Inv. Simpson, Fisher
+erDF <- estimate_richness(physeq.filtered)
+
+# add Faith's PD, this is a simple wrapper to format everything correctly
+pd <- estimate_pd(physeq.filtered)
+
+# we don't need SR, it's the same as observed
+erDF$PD <- pd$PD
+
+physeq = physeq.filtered
+
+measures = colnames(erDF)
+```
+
+```{r}
+p <- plot_richness_estimates(physeq = physeq, erDF = erDF[10], "Tissue", color = "Tissue", title="Alpha diversity based on tissue type")
+
+p + geom_boxplot(aes(x=Tissue, y=value, color=NULL), alpha=0.1) +
+  stat_compare_means(label = "p.signif", ref.group = "Digesta",  hide.ns = TRUE) +
+  ylab("Faith PD") + theme(legend.position = "none")
+
+#ggsave("alpha-faithpd-all-byTissue.pdf", path = "./results/final-plots", device = pdf, width = 4.5, height = 4.5, units = "in")
+```
 
 
 ## Check for normal distribution 
@@ -886,6 +996,13 @@ Ran into error, so skipping above code.
 
 # Beta diversity
 
+Before plotting, let's change the order of metadata.
+```{r}
+#Rearrange treatment order
+sample_data(physeq.prev)$Treatment <- factor(sample_data(physeq.filtered)$Treatment,levels = c("C","S","S_D","PS","PS_D"))
+sample_data(physeq.prev)$DFM <- factor(sample_data(physeq.filtered)$DFM,levels = c("Control","Absent","Present"))
+```
+
 Initial beta diversity calculation on the glommed samples information
 
 ```{r }
@@ -903,8 +1020,18 @@ p
 Transform data to relative proportions (no prior added).  We may want the option to change this later.
 
 ```{r }
+#All samples
 physeq.prop <- transform_sample_counts(physeq.prev, function(x) x/sum(x) )
 sample_data(physeq.prop)$SampleSums <- sample_sums(physeq.prev)
+
+#Pull out Mucosa & digesta only
+mucosa.prev <- subset_samples(physeq.prev, Tissue=="Mucosa")
+digesta.prev <- subset_samples(physeq.prev, Tissue=="Digesta")
+
+mucosa.prop <- transform_sample_counts(mucosa.prev, function(x) x/sum(x) )
+sample_data(mucosa.prop)$SampleSums <- sample_sums(mucosa.prev)
+digesta.prop <- transform_sample_counts(digesta.prev, function(x) x/sum(x) )
+sample_data(digesta.prop)$SampleSums <- sample_sums(digesta.prev)
 ```
 
 ## CLR normalization, McMurdie
@@ -944,7 +1071,9 @@ physeq.clr2
 Set the active normalization type (Prop for now)
 
 ```{r}
-physeq.active <- physeq.prop
+#physeq.active <- physeq.prop
+physeq.active <- mucosa.prop
+#physeq.active <- digesta.prop
 ```
 
 
@@ -1002,7 +1131,7 @@ Let's try PERMANOVA on this using the implementation in `vegan` (`adonis2`).
 ```{r }
 set.seed(12345)
 finalPhyseq.meta <- as(sample_data(physeq.active), "data.frame")
-finalPhyseq.prop.dist.bc <- phyloseq::distance(physeq.active, method = "bray")
+finalPhyseq.prop.dist.bc <- phyloseq::distance(physeq.active, method = "wunifrac")
 ```
 
 ```{r}
@@ -1063,7 +1192,10 @@ finalPhyseq.prop.ano
 
 
 ```{r }
-plot(finalPhyseq.prop.ano, cex.axis = 0.6)
+#plot(finalPhyseq.prop.ano, cex.axis = 0.6)
+p <- ggplot(finalPhyseq.prop.ano, aes(x = Treatment, y = "value")) +
+  geom_boxplot(aes(fill = dose), show.legend = FALSE)
+p
 ```
 
 How about Tissue?
