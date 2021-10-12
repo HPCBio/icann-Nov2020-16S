@@ -1043,6 +1043,9 @@ Transform data using CLR (from McMurdie (Meth Mol Bio 2018) supplemental package
 physeq.clr <- phyloseq_CLR(physeq.prev)
 # otu_table(physeq.clr) <- otu_table(as(x, "matrix"), taxa_are_rows = FALSE)
 physeq.clr
+
+mucosa.clr <- phyloseq_CLR(mucosa.prev)
+digesta.clr <- phyloseq_CLR(digesta.prev)
 ```
 
 ## CLR normalization, mixOmics
@@ -1051,19 +1054,19 @@ CLR from `mixOmics`.
 
 ```{r }
 # get counts
-tmp <- as(otu_table(physeq.prev),"matrix")
+tmp <- as(otu_table(mucosa.prev),"matrix")
 
 tmp <- tmp
 
 # transpose if needed
-if(!taxa_are_rows(physeq.prev)) { tmp <- t(tmp)}
+if(!taxa_are_rows(mucosa.prev)) { tmp <- t(tmp)}
 
 x <- logratio.transfo(tmp, logratio = 'CLR', offset = 1)
 
 # copy instance and replace raw counts with CLR-normalized counts
-physeq.clr2 <- physeq.prev
-otu_table(physeq.clr2) <- otu_table(as(x, "matrix"), taxa_are_rows = TRUE)
-physeq.clr2
+mucosa.clr2 <- mucosa.prev
+otu_table(mucosa.clr2) <- otu_table(as(x, "matrix"), taxa_are_rows = TRUE)
+mucosa.clr2
 ```
 
 ## Set active instance
@@ -1072,8 +1075,8 @@ Set the active normalization type (Prop for now)
 
 ```{r}
 #physeq.active <- physeq.prop
-physeq.active <- mucosa.prop
-#physeq.active <- digesta.prop
+#physeq.active <- mucosa.prop
+physeq.active <- digesta.prop
 ```
 
 
@@ -1084,8 +1087,8 @@ p1 = plot_ordination(physeq.active,
                      type="samples",
                      color="Treatment",
                      title="Samples") + geom_point(size = 2.5)
-#p1 + scale_color_brewer(palette="Spectral")
-p1
+p1 + ggtitle("Bray Curtis distance, Mucosa") 
+#+  scale_fill_viridis_d()
 ```
 
 physeq.prop: Control separates from the other treatments pretty obviously. The other treatments are mixed and vaguely cluster together. 
@@ -1134,8 +1137,21 @@ finalPhyseq.meta <- as(sample_data(physeq.active), "data.frame")
 finalPhyseq.prop.dist.bc <- phyloseq::distance(physeq.active, method = "wunifrac")
 ```
 
+Test
+```{r }
+physeq.active <- physeq.prop
+#physeq.active <- mucosa.prop
+#physeq.active <- digesta.prop
+physeq.test <- physeq.active
+sample_data(physeq.test)$DFM <- as.factor(c("Absent","Absent","Absent","Absent", "Absent","Absent", "Present", "Present", "Present", "Present", "Absent","Absent","Absent","Absent", "Present", "Present","Present", "Present", "Absent","Absent"))
+#sample_data(physeq.test)$PRRSV <- as.factor(c("Control",  "Control", "Control",  "Control",  "Absent",  "Absent",  "Absent",  "Absent","Absent",  "Absent",  "Present", "Present", "Present", "Present", "Present", "Present","Present", "Present", "Control",  "Control","Control",  "Control",  "Absent",  "Absent","Absent",  "Absent", "Absent",  "Absent",  "Present", "Present","Present", "Present","Present", "Present", "Present", "Present","Absent",  "Absent",  "Absent",  "Absent"))
+set.seed(1245)
+finalPhyseq.meta <- as(sample_data(physeq.test), "data.frame")
+finalPhyseq.prop.dist.bc <- phyloseq::distance(physeq.test, method = "bray")
+```
+
 ```{r}
-adonis2(finalPhyseq.prop.dist.bc ~ Treatment,
+adonis2(finalPhyseq.prop.dist.bc ~ Tissue,
        data = finalPhyseq.meta)
 ```
 
@@ -1143,7 +1159,7 @@ physeq.prop: This indicates the treatment effect is very significant (pval = <0.
 physeq.clr2: ""
 
 ```{r}
-adonis2(finalPhyseq.prop.dist.bc ~ Treatment + Tissue,
+adonis2(finalPhyseq.prop.dist.bc ~ DFM*PRRSV*Treatment*Tissue ,
        data = finalPhyseq.meta)
 ```
 
@@ -1153,7 +1169,7 @@ physeq.clr2: When I include Tissue, it's not significant, and Treatment's signif
 Next we check for significance in differences between group dispersion.
 
 ```{r }
-beta <- betadisper(finalPhyseq.prop.dist.bc, finalPhyseq.meta$Treatment)
+beta <- betadisper(finalPhyseq.prop.dist.bc, finalPhyseq.meta$Tissue)
 permutest(beta)
 ```
 
@@ -1163,13 +1179,13 @@ physeq.clr2: heteroscedasticity is significant.
 
 
 ```{r }
-plot(beta)
+plot(beta, main = "Bray-Curtis Beta diversity PCoA by DFM presence/absence")
 ```
 
 What about Tissue?
 
 ```{r}
-beta <- betadisper(finalPhyseq.prop.dist.bc, finalPhyseq.meta$Tissue)
+beta <- betadisper(finalPhyseq.prop.dist.bc, finalPhyseq.meta$DFM)
 permutest(beta)
 ```
 
@@ -1178,6 +1194,50 @@ physeq.clr2: Significant
 
 ```{r}
 plot(beta)
+```
+## Lindsay's PERMANOVA code
+
+```{r permanova, eval = TRUE}
+# get P-values for all distances and covariates
+covars <- list(dinp = c("Group", "nonchim"), dinp20 = c("Group", "nonchim"), dinp200 = c("Group", "nonchim"))
+covars <- lapply(covars, function(x){
+  names(x) <- x
+  names(x)[x == "nonchim"] <- "Library size"
+  x
+})
+distmeth <- c(Bray = "bray", UniFrac = "unifrac", `Weighted UniFrac` = "wunifrac")
+ps_list <- list(dinp = ps_prop,
+                dinp20 = prune_samples(metadata$Group %in% c("Control", "20 µg/kg DiNP"), ps_prop),
+                dinp200 = prune_samples(metadata$Group %in% c("Control", "200 µg/kg DiNP"), ps_prop))
+sam_list <- list(dinp = metadata,
+                 dinp20 = metadata[metadata$Group %in% c("Control", "20 µg/kg DiNP"),],
+                 dinp200 = metadata[metadata$Group %in% c("Control", "200 µg/kg DiNP"),])
+sam_list[[2]]$Group <- factor(sam_list[[2]]$Group, levels = unique(sam_list[[2]]$Group))
+sam_list[[3]]$Group <- factor(sam_list[[3]]$Group, levels = unique(sam_list[[3]]$Group))
+permanova_out <- data.frame(var = unlist(covars),
+                            Study = rep(names(covars), times = lengths(covars)),
+                            Variable = unlist(lapply(covars, names)))
+permanova_out <- cbind(permanova_out,
+                       matrix(NA_real_, nrow = nrow(permanova_out),
+                              ncol = 2 * length(distmeth),
+                              dimnames = list(NULL, c(names(distmeth), paste0("betadisper_", names(distmeth))))))
+set.seed(928)
+for(s in names(covars)){
+  for(m in seq_along(distmeth)){
+    this_dist <- phyloseq::distance(ps_list[[s]], method = distmeth[m])
+    for(v in covars[[s]]){
+      this_perm <- adonis2(reformulate(v, response = "this_dist"),
+                           data = sam_list[[s]])
+      this_row <- which(permanova_out$Study == s & permanova_out$var == v)
+      permanova_out[[names(distmeth)[m]]][this_row] <- this_perm[["Pr(>F)"]][1]
+      if(v == "Group"){
+        # beta dispersion
+        b <- anova(betadisper(this_dist, sam_list[[s]]$Group, bias.adjust = TRUE))
+        permanova_out[[paste0("betadisper_", names(distmeth)[m])]][this_row] <- b[["Pr(>F)"]][1]
+      }
+    }
+  }
+}
 ```
 
 ## ANOSIM
@@ -1192,16 +1252,13 @@ finalPhyseq.prop.ano
 
 
 ```{r }
-#plot(finalPhyseq.prop.ano, cex.axis = 0.6)
-p <- ggplot(finalPhyseq.prop.ano, aes(x = Treatment, y = "value")) +
-  geom_boxplot(aes(fill = dose), show.legend = FALSE)
-p
+plot(finalPhyseq.prop.ano, cex.axis = 0.6)
 ```
 
-How about Tissue?
+How about DFM?
 
 ```{r }
-finalPhyseq.prop.ano <- anosim(finalPhyseq.prop.dist.bc, finalPhyseq.meta$Tissue)
+finalPhyseq.prop.ano <- anosim(finalPhyseq.prop.dist.bc, finalPhyseq.meta$DFM)
 finalPhyseq.prop.ano
 ```
 
